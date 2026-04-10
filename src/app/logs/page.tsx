@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { formatSize, formatDate } from "@/lib/format";
 
 interface LogFile {
@@ -12,7 +12,9 @@ interface LogFile {
   modifiedAt: string;
 }
 
-function getLogLevel(line: string): "info" | "warn" | "error" | "debug" | "unknown" {
+type LogLevel = "info" | "warn" | "error" | "debug" | "unknown";
+
+function getLogLevel(line: string): LogLevel {
   const lower = line.toLowerCase();
   if (lower.includes("[error]") || lower.includes("error:")) return "error";
   if (lower.includes("[warn]") || lower.includes("warning:")) return "warn";
@@ -21,7 +23,7 @@ function getLogLevel(line: string): "info" | "warn" | "error" | "debug" | "unkno
   return "unknown";
 }
 
-function levelColor(level: string): string {
+function levelColor(level: LogLevel): string {
   switch (level) {
     case "error": return "text-red-500";
     case "warn": return "text-yellow-600";
@@ -31,13 +33,29 @@ function levelColor(level: string): string {
   }
 }
 
+const LEVELS: LogLevel[] = ["error", "warn", "info", "debug", "unknown"];
+
+function tryFormatJson(line: string): string {
+  try {
+    const parsed = JSON.parse(line);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return line;
+  }
+}
+
 export default function LogsPage() {
   const [logFiles, setLogFiles] = useState<LogFile[]>([]);
   const [selectedLog, setSelectedLog] = useState<string | null>(null);
-  const [logContent, setLogContent] = useState<string>("");
+  const [rawContent, setRawContent] = useState<string>("");
   const [totalLines, setTotalLines] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingLog, setLoadingLog] = useState(false);
+  const [levelFilter, setLevelFilter] = useState<LogLevel | null>(null);
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [formatJson, setFormatJson] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/logs")
@@ -55,12 +73,41 @@ export default function LogsPage() {
       .then((r) => r.json())
       .then((res) => {
         if (res.success) {
-          setLogContent(res.data.content);
+          setRawContent(res.data.content);
           setTotalLines(res.data.totalLines);
         }
       })
       .finally(() => setLoadingLog(false));
   }
+
+  const lines = rawContent.split("\n");
+
+  const filteredLines = useCallback(() => {
+    return lines.filter((line) => {
+      if (levelFilter) {
+        const level = getLogLevel(line);
+        if (level !== levelFilter) return false;
+      }
+      if (searchKeyword && !line.toLowerCase().includes(searchKeyword.toLowerCase())) {
+        return false;
+      }
+      return true;
+    });
+  }, [lines, levelFilter, searchKeyword])();
+
+  // Count by level
+  const levelCounts = lines.reduce((acc, line) => {
+    const level = getLogLevel(line);
+    acc[level] = (acc[level] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    if (autoScroll && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [filteredLines, autoScroll]);
 
   return (
     <div className="flex h-[calc(100vh-8rem)] gap-4">
@@ -110,11 +157,51 @@ export default function LogsPage() {
                 {selectedLog ? selectedLog.split("/").pop() : "Select a log file"}
               </CardTitle>
               {selectedLog && (
-                <span className="text-xs text-muted-foreground">
-                  {totalLines} lines
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {filteredLines.length}/{totalLines} lines
+                  </span>
+                  <button
+                    onClick={() => setAutoScroll(!autoScroll)}
+                    className={`text-xs px-2 py-0.5 rounded border ${autoScroll ? "bg-primary/10" : ""}`}
+                  >
+                    Auto-scroll
+                  </button>
+                  <button
+                    onClick={() => setFormatJson(!formatJson)}
+                    className={`text-xs px-2 py-0.5 rounded border ${formatJson ? "bg-primary/10" : ""}`}
+                  >
+                    JSON
+                  </button>
+                </div>
               )}
             </div>
+            {/* Level filters */}
+            {selectedLog && (
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => setLevelFilter(null)}
+                  className={`text-xs px-2 py-0.5 rounded border ${!levelFilter ? "bg-primary/10" : ""}`}
+                >
+                  All
+                </button>
+                {LEVELS.map((level) => (
+                  <button
+                    key={level}
+                    onClick={() => setLevelFilter(levelFilter === level ? null : level)}
+                    className={`text-xs px-2 py-0.5 rounded border ${levelFilter === level ? "bg-primary/10" : ""} ${levelColor(level)}`}
+                  >
+                    {level} ({levelCounts[level] || 0})
+                  </button>
+                ))}
+                <Input
+                  placeholder="Filter..."
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  className="w-40 h-6 text-xs"
+                />
+              </div>
+            )}
           </CardHeader>
           <CardContent className="flex-1 min-h-0">
             {!selectedLog ? (
@@ -128,18 +215,19 @@ export default function LogsPage() {
                 ))}
               </div>
             ) : (
-              <ScrollArea className="h-full max-h-[calc(100vh-200px)]">
+              <div ref={scrollRef} className="h-full max-h-[calc(100vh-260px)] overflow-auto">
                 <pre className="text-xs font-mono whitespace-pre-wrap">
-                  {logContent.split("\n").map((line, i) => {
+                  {filteredLines.map((line, i) => {
                     const level = getLogLevel(line);
+                    const displayLine = formatJson ? tryFormatJson(line) : line;
                     return (
                       <div key={i} className={levelColor(level)}>
-                        {line}
+                        {displayLine}
                       </div>
                     );
                   })}
                 </pre>
-              </ScrollArea>
+              </div>
             )}
           </CardContent>
         </Card>

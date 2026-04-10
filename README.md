@@ -4,23 +4,27 @@ A web-based admin dashboard for managing and monitoring the [OpenClaw](https://g
 
 ## Features
 
-- **Dashboard** - Overview of files, sessions, plugins, and cron tasks with interactive charts
-- **File Browser** - Navigate, view, and edit files in your OpenClaw home directory
-- **Config Editor** - Visual editor for `openclaw.json` configuration
-- **Sessions** - Browse and inspect AI conversation sessions with full message history
-- **Memory** - Search and explore the SQLite memory database
-- **Plugins** - View installed plugins and their skills
-- **Cron Tasks** - Monitor scheduled tasks and execution history
-- **Logs** - Real-time log viewer with level filtering
+- **Dashboard** - Overview with file type charts, directory size rankings, agent status
+- **File Browser** - Navigate, view, edit files with content search (grep), breadcrumbs, and large file warnings
+- **Config Editor** - Section-based editing for openclaw.json with tabs and raw JSON mode
+- **Sessions** - Browse AI conversations with markdown rendering, code highlighting, collapsible blocks
+- **Memory** - Search SQLite memory with FTS5, filter by source/model, grouped views
+- **Plugins** - View installed plugins with README display, skill content, file statistics
+- **Cron Tasks** - Monitor scheduled tasks with execution history, success rates, duration stats
+- **Logs** - Real-time log viewer with level filtering, keyword search, JSON formatting
+- **Global Search** - Cmd+K search across files, sessions, and memory
+- **Dark Mode** - Theme toggle with system preference detection
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 5
-- **UI**: Tailwind CSS 4 + shadcn/ui
+- **UI**: Tailwind CSS 4 + shadcn/ui + lucide-react icons
 - **Charts**: Recharts 3
-- **Database**: SQLite (better-sqlite3)
-- **Icons**: Lucide React
+- **Database**: SQLite via better-sqlite3
+- **Markdown**: react-markdown + react-syntax-highlighter
+- **Theming**: next-themes
+- **Testing**: Vitest + @testing-library/react
 
 ## Getting Started
 
@@ -32,18 +36,11 @@ A web-based admin dashboard for managing and monitoring the [OpenClaw](https://g
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/hugo617/openclaw-admin.git
 cd openclaw-admin
-
-# Install dependencies
 pnpm install
-
-# Configure environment
 cp .env.example .env.local
 # Edit .env.local to set your OPENCLAW_HOME path
-
-# Start development server
 pnpm dev
 ```
 
@@ -59,19 +56,20 @@ Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/files` | GET | Get file tree or stats |
-| `/api/files/[...path]` | GET | Read file content |
-| `/api/files/[...path]` | PUT | Write file content |
-| `/api/config` | GET | Read openclaw.json |
-| `/api/config` | PUT | Update openclaw.json |
-| `/api/sessions` | GET | List all sessions |
-| `/api/sessions/[id]` | GET | Get session detail |
-| `/api/memory` | GET | Get recent memories or stats |
-| `/api/memory?q=query` | GET | Search memories |
-| `/api/plugins` | GET | List installed plugins |
-| `/api/cron` | GET | List cron tasks |
+| `/api/files` | GET | Get file tree or stats (`?mode=stats`) |
+| `/api/files/[...path]` | GET | Read file or directory |
+| `/api/files/[...path]` | PUT | Write file content (with backup) |
+| `/api/files/search?q=` | GET | Grep-based file content search |
+| `/api/config` | GET/PUT | Read/write openclaw.json |
+| `/api/sessions` | GET | List all sessions with metadata |
+| `/api/sessions/[id]` | GET | Get session detail with messages |
+| `/api/memory` | GET | Recent memories + stats |
+| `/api/memory?q=` | GET | FTS5 search memories |
+| `/api/memory?mode=grouped` | GET | Memories grouped by file path |
+| `/api/plugins` | GET | List plugins with skills and README |
+| `/api/cron` | GET | List cron tasks with run history |
 | `/api/logs` | GET | List log files |
-| `/api/logs?file=path` | GET | Read log content |
+| `/api/logs?file=&lines=` | GET | Read log file |
 
 ## Scripts
 
@@ -82,18 +80,38 @@ Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 | `pnpm start` | Start production server |
 | `pnpm lint` | Run ESLint |
 | `pnpm type-check` | Run TypeScript type checking |
+| `pnpm test` | Run tests |
+| `pnpm test:watch` | Run tests in watch mode |
 
-## Development
+## Project Structure
 
-```bash
-# Type checking
-pnpm type-check
-
-# Linting
-pnpm lint
-
-# Build
-pnpm build
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── api/               # API route handlers
+│   ├── config/            # Config editor page
+│   ├── cron/              # Cron tasks page
+│   ├── files/             # File browser page
+│   ├── logs/              # Log viewer page
+│   ├── memory/            # Memory viewer page
+│   ├── plugins/           # Plugin manager page
+│   └── sessions/          # Session list + detail pages
+├── components/
+│   ├── dashboard/         # Dashboard components (charts, cards)
+│   ├── error-boundary.tsx # Global error boundary
+│   ├── files/             # File tree + viewer
+│   ├── layout/            # Sidebar, header, global search
+│   ├── theme-provider.tsx # Theme context provider
+│   ├── theme-toggle.tsx   # Light/dark/system toggle
+│   └── ui/                # shadcn/ui components
+└── lib/
+    ├── __tests__/         # Unit tests
+    ├── config.ts          # Config read/write
+    ├── format.ts          # Shared formatting utilities
+    ├── memory-client.ts   # SQLite memory client
+    ├── openclaw.ts        # Core file system operations
+    ├── session-parser.ts  # JSONL session parser
+    └── utils.ts           # Class name utilities
 ```
 
 ## License

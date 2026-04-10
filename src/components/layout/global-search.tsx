@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, FileText, MessageSquare, Database, Settings, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface SearchResult {
   type: "file" | "session" | "memory" | "config";
@@ -176,8 +177,4 @@ export function GlobalSearch() {
       </div>
     </div>
   );
-}
-
-function Badge({ className, children }: { className: string; children: React.ReactNode }) {
-  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium border ${className}`}>{children}</span>;
 }

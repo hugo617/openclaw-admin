@@ -11,12 +11,82 @@ export interface SessionMeta {
   status: "active" | "reset" | "deleted";
   channel?: string;
   preview?: string;
+  model?: string;
+  provider?: string;
+  cwd?: string;
+  version?: number;
+  totalTokens?: number;
+}
+
+export interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  name?: string;
+  id?: string;
+  arguments?: Record<string, unknown>;
+  toolCallId?: string;
+  toolName?: string;
+  details?: Record<string, unknown>;
+  isError?: boolean;
 }
 
 export interface SessionMessage {
+  id: string;
   role: string;
   content: string;
+  contentBlocks: ContentBlock[];
   timestamp?: string;
+  model?: string;
+  provider?: string;
+  usage?: {
+    input: number;
+    output: number;
+    totalTokens: number;
+    cost?: { total: number };
+  };
+  stopReason?: string;
+}
+
+interface JsonlLine {
+  type: string;
+  id?: string;
+  timestamp?: string;
+  message?: {
+    role: string;
+    content: ContentBlock[] | string;
+    timestamp?: number;
+    model?: string;
+    provider?: string;
+    usage?: SessionMessage["usage"];
+    stopReason?: string;
+  };
+  provider?: string;
+  modelId?: string;
+  cwd?: string;
+  version?: number;
+  customType?: string;
+  data?: Record<string, unknown>;
+}
+
+function extractTextFromBlocks(blocks: ContentBlock[]): string {
+  return blocks
+    .filter((b) => b.type === "text" && b.text)
+    .map((b) => b.text!)
+    .join("\n");
+}
+
+function extractPreviewFromBlocks(blocks: ContentBlock[]): string {
+  const text = extractTextFromBlocks(blocks);
+  return text.slice(0, 100);
+}
+
+function inferChannelFromCustom(data: Record<string, unknown> | undefined): string | undefined {
+  if (!data) return undefined;
+  const sender = data.sender as string | undefined;
+  const isGroup = data.is_group_chat as boolean | undefined;
+  if (sender) return isGroup ? "group" : "dm";
+  return undefined;
 }
 
 export async function listSessions(): Promise<SessionMeta[]> {
@@ -42,36 +112,72 @@ export async function listSessions(): Promise<SessionMeta[]> {
     if (filename.includes(".reset.")) status = "reset";
     else if (filename.includes(".deleted.")) status = "deleted";
 
-    // Read first few lines for preview and count
     let messageCount = 0;
     let preview = "";
     let channel: string | undefined;
-    try {
-      const content = await fs.readFile(fullPath, "utf-8");
-      const lines = content.trim().split("\n").filter(Boolean);
-      messageCount = lines.length;
+    let model: string | undefined;
+    let provider: string | undefined;
+    let cwd: string | undefined;
+    let version: number | undefined;
+    let totalTokens = 0;
 
-      if (lines.length > 0) {
+    try {
+      const fileContent = await fs.readFile(fullPath, "utf-8");
+      const lines = fileContent.trim().split("\n").filter(Boolean);
+
+      for (const line of lines) {
         try {
-          const firstMsg = JSON.parse(lines[0]);
-          channel = firstMsg.channel || firstMsg.metadata?.channel;
-          // Find first user message for preview
-          for (const line of lines.slice(0, 5)) {
-            try {
-              const msg = JSON.parse(line);
-              if (msg.role === "user" && msg.content) {
-                preview =
-                  typeof msg.content === "string"
-                    ? msg.content.slice(0, 100)
-                    : JSON.stringify(msg.content).slice(0, 100);
-                break;
+          const parsed: JsonlLine = JSON.parse(line);
+
+          if (parsed.type === "session") {
+            cwd = parsed.cwd;
+            version = parsed.version;
+          } else if (parsed.type === "model_change") {
+            model = parsed.modelId;
+            provider = parsed.provider;
+          } else if (parsed.type === "message" && parsed.message) {
+            messageCount++;
+            if (!preview && parsed.message.role === "user") {
+              const blocks = Array.isArray(parsed.message.content)
+                ? parsed.message.content
+                : [{ type: "text", text: String(parsed.message.content) }];
+              // Strip metadata prefixes from preview
+              let previewText = extractPreviewFromBlocks(blocks);
+              const metadataPrefix = "Conversation info (untrusted metadata):";
+              if (previewText.includes(metadataPrefix)) {
+                const lines = previewText.split("\n");
+                const afterMetadata = lines.slice(
+                  lines.findIndex((l) => l.includes("]: ")) + 1
+                );
+                previewText = afterMetadata.join(" ").slice(0, 100);
               }
-            } catch {
-              // skip malformed lines
+              preview = previewText;
             }
+            if (
+              parsed.message.role === "user" &&
+              Array.isArray(parsed.message.content)
+            ) {
+              const customBlocks = parsed.message.content.filter(
+                (b) => b.type === "text" && (b.text?.includes("sender") || b.text?.includes("group_subject"))
+              );
+              if (customBlocks.length > 0) {
+                channel = "messaging";
+              }
+            }
+            if (
+              parsed.message.role === "assistant" &&
+              parsed.message.usage
+            ) {
+              totalTokens += parsed.message.usage.totalTokens ?? 0;
+            }
+          } else if (parsed.type === "custom" && parsed.customType) {
+            const ch = inferChannelFromCustom(
+              parsed.data as Record<string, unknown>
+            );
+            if (ch) channel = ch;
           }
         } catch {
-          // skip malformed first line
+          // skip malformed lines
         }
       }
     } catch {
@@ -87,6 +193,11 @@ export async function listSessions(): Promise<SessionMeta[]> {
       status,
       channel,
       preview,
+      model,
+      provider,
+      cwd,
+      version,
+      totalTokens: totalTokens > 0 ? totalTokens : undefined,
     });
   }
 
@@ -101,7 +212,6 @@ export async function getSessionDetail(
 ): Promise<{ meta: SessionMeta; messages: SessionMessage[] }> {
   const sessionsDir = path.join(OPENCLAW_HOME, "agents/main/sessions");
 
-  // Find the file matching this session ID
   const entries = await fs.readdir(sessionsDir);
   const filename = entries.find(
     (f) => f.startsWith(id) && f.endsWith(".jsonl")
@@ -112,35 +222,56 @@ export async function getSessionDetail(
 
   const fullPath = path.join(sessionsDir, filename);
   const stat = await fs.stat(fullPath);
-  const content = await fs.readFile(fullPath, "utf-8");
-  const lines = content.trim().split("\n").filter(Boolean);
+  const fileContent = await fs.readFile(fullPath, "utf-8");
+  const lines = fileContent.trim().split("\n").filter(Boolean);
 
   const messages: SessionMessage[] = [];
+  let model: string | undefined;
+  let provider: string | undefined;
+  let cwd: string | undefined;
+  let version: number | undefined;
+  let channel: string | undefined;
+  let totalTokens = 0;
+
   for (const line of lines) {
     try {
-      const msg = JSON.parse(line);
-      let content: string;
-      if (typeof msg.content === "string") {
-        content = msg.content;
-      } else if (msg.content == null) {
-        content = "";
-      } else if (Array.isArray(msg.content)) {
-        // Anthropic-style content blocks
-        content = msg.content
-          .map((block: Record<string, unknown>) => {
-            if (typeof block === "string") return block;
-            if (block.text) return block.text;
-            return JSON.stringify(block);
-          })
-          .join("\n");
-      } else {
-        content = JSON.stringify(msg.content, null, 2);
+      const parsed: JsonlLine = JSON.parse(line);
+
+      if (parsed.type === "session") {
+        cwd = parsed.cwd;
+        version = parsed.version;
+      } else if (parsed.type === "model_change") {
+        model = parsed.modelId;
+        provider = parsed.provider;
+      } else if (parsed.type === "custom" && parsed.customType) {
+        const ch = inferChannelFromCustom(
+          parsed.data as Record<string, unknown>
+        );
+        if (ch) channel = ch;
+      } else if (parsed.type === "message" && parsed.message) {
+        const blocks: ContentBlock[] = Array.isArray(parsed.message.content)
+          ? parsed.message.content
+          : [{ type: "text", text: String(parsed.message.content ?? "") }];
+
+        const textContent = extractTextFromBlocks(blocks);
+
+        if (parsed.message.usage) {
+          totalTokens += parsed.message.usage.totalTokens ?? 0;
+        }
+
+        messages.push({
+          id: parsed.id ?? "",
+          role: parsed.message.role,
+          content: textContent,
+          contentBlocks: blocks,
+          timestamp: parsed.timestamp,
+          model: parsed.message.model,
+          provider: parsed.message.provider,
+          usage: parsed.message.usage,
+          stopReason: parsed.message.stopReason,
+        });
       }
-      messages.push({
-        role: msg.role || "unknown",
-        content,
-        timestamp: msg.timestamp || msg.metadata?.timestamp || undefined,
-      });
+      // Skip other types: thinking_level_change, summary, etc.
     } catch {
       // skip malformed lines
     }
@@ -150,6 +281,12 @@ export async function getSessionDetail(
   if (filename.includes(".reset.")) status = "reset";
   else if (filename.includes(".deleted.")) status = "deleted";
 
+  let preview: string | undefined;
+  const firstUser = messages.find((m) => m.role === "user");
+  if (firstUser) {
+    preview = firstUser.content.slice(0, 100);
+  }
+
   return {
     meta: {
       id,
@@ -158,6 +295,13 @@ export async function getSessionDetail(
       modifiedAt: stat.mtime.toISOString(),
       messageCount: messages.length,
       status,
+      channel,
+      preview,
+      model,
+      provider,
+      cwd,
+      version,
+      totalTokens: totalTokens > 0 ? totalTokens : undefined,
     },
     messages,
   };

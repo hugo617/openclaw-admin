@@ -8,10 +8,33 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatSize } from "@/lib/format";
 
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  toolCallId?: string;
+  toolName?: string;
+  details?: Record<string, unknown>;
+  isError?: boolean;
+}
+
 interface SessionMessage {
+  id: string;
   role: string;
   content: string;
+  contentBlocks: ContentBlock[];
   timestamp?: string;
+  model?: string;
+  provider?: string;
+  usage?: {
+    input: number;
+    output: number;
+    totalTokens: number;
+    cost?: { total: number };
+  };
+  stopReason?: string;
 }
 
 interface SessionDetail {
@@ -22,6 +45,10 @@ interface SessionDetail {
     modifiedAt: string;
     messageCount: number;
     status: "active" | "reset" | "deleted";
+    model?: string;
+    provider?: string;
+    cwd?: string;
+    totalTokens?: number;
   };
   messages: SessionMessage[];
 }
@@ -94,9 +121,13 @@ export default function SessionDetailPage() {
       </div>
 
       {/* Session Info */}
-      <div className="flex gap-4 text-sm text-muted-foreground">
+      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
         <span>{detail.meta.messageCount} messages</span>
         <span>{formatSize(detail.meta.size)}</span>
+        {detail.meta.model && <Badge variant="outline">{detail.meta.model}</Badge>}
+        {detail.meta.totalTokens != null && (
+          <span>{detail.meta.totalTokens.toLocaleString()} tokens</span>
+        )}
         <span>{new Date(detail.meta.modifiedAt).toLocaleString()}</span>
       </div>
 

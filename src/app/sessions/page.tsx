@@ -24,6 +24,9 @@ interface SessionMeta {
   status: "active" | "reset" | "deleted";
   channel?: string;
   preview?: string;
+  model?: string;
+  provider?: string;
+  totalTokens?: number;
 }
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" {
@@ -120,6 +123,7 @@ export default function SessionsPage() {
                   <TableHead>ID</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Channel</TableHead>
+                  <TableHead>Model</TableHead>
                   <TableHead>Messages</TableHead>
                   <TableHead>Size</TableHead>
                   <TableHead>Last Modified</TableHead>
@@ -144,6 +148,11 @@ export default function SessionsPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {session.channel || "-"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {session.model ? (
+                        <Badge variant="outline" className="text-xs">{session.model}</Badge>
+                      ) : "-"}
                     </TableCell>
                     <TableCell className="text-sm">{session.messageCount}</TableCell>
                     <TableCell className="text-sm">{formatSize(session.size)}</TableCell>

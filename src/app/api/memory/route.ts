@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import {
   searchMemory,
+  searchMemoryLike,
   getMemoryStats,
   getRecentMemories,
+  getMemoriesByPath,
+  getFiles,
   isMemoryDbAvailable,
 } from "@/lib/memory-client";
 
@@ -11,7 +14,12 @@ export async function GET(request: Request) {
     if (!isMemoryDbAvailable()) {
       return NextResponse.json({
         success: true,
-        data: { entries: [], stats: { totalEntries: 0, dbSize: 0 } },
+        data: {
+          entries: [],
+          stats: { totalChunks: 0, totalFiles: 0, dbSize: 0, bySource: {}, byModel: {} },
+          grouped: {},
+          files: [],
+        },
       });
     }
 
@@ -24,9 +32,28 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: stats });
     }
 
-    const entries = query
-      ? searchMemory(query)
-      : getRecentMemories();
+    if (mode === "grouped") {
+      const grouped = getMemoriesByPath();
+      const stats = getMemoryStats();
+      return NextResponse.json({ success: true, data: { grouped, stats } });
+    }
+
+    if (mode === "files") {
+      const files = getFiles();
+      return NextResponse.json({ success: true, data: files });
+    }
+
+    let entries;
+    if (query) {
+      // Try FTS first, fall back to LIKE search
+      try {
+        entries = searchMemory(query);
+      } catch {
+        entries = searchMemoryLike(query);
+      }
+    } else {
+      entries = getRecentMemories();
+    }
 
     const stats = getMemoryStats();
 

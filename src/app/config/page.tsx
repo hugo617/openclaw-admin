@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,23 +9,29 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 type ConfigData = Record<string, unknown>;
 
 function JsonHighlight({ content }: { content: string }) {
-  try {
-    const formatted = JSON.stringify(JSON.parse(content), null, 2);
-    const highlighted = formatted
-      .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span style="color: hsl(221, 83%, 53%)">$1</span>:')
-      .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color: hsl(142, 71%, 45%)">$1</span>')
-      .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color: hsl(38, 92%, 50%)">$1</span>')
-      .replace(/:\s*(true|false)/g, ': <span style="color: hsl(0, 84%, 60%)">$1</span>')
-      .replace(/:\s*(null)/g, ': <span style="color: hsl(0, 0%, 50%)">$1</span>');
-    return (
-      <pre
-        className="text-sm font-mono whitespace-pre-wrap"
-        dangerouslySetInnerHTML={{ __html: highlighted }}
-      />
-    );
-  } catch {
+  const highlighted = useMemo(() => {
+    try {
+      const formatted = JSON.stringify(JSON.parse(content), null, 2);
+      return formatted
+        .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span style="color: hsl(221, 83%, 53%)">$1</span>:')
+        .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color: hsl(142, 71%, 45%)">$1</span>')
+        .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color: hsl(38, 92%, 50%)">$1</span>')
+        .replace(/:\s*(true|false)/g, ': <span style="color: hsl(0, 84%, 60%)">$1</span>')
+        .replace(/:\s*(null)/g, ': <span style="color: hsl(0, 0%, 50%)">$1</span>');
+    } catch {
+      return null;
+    }
+  }, [content]);
+
+  if (highlighted === null) {
     return <pre className="text-sm font-mono whitespace-pre-wrap">{content}</pre>;
   }
+  return (
+    <pre
+      className="text-sm font-mono whitespace-pre-wrap"
+      dangerouslySetInnerHTML={{ __html: highlighted }}
+    />
+  );
 }
 
 export default function ConfigPage() {

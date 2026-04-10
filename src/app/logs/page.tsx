@@ -2,27 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatSize, formatDate } from "@/lib/format";
 
 interface LogFile {
   name: string;
   path: string;
   size: number;
   modifiedAt: string;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
 }
 
 function getLogLevel(line: string): "info" | "warn" | "error" | "debug" | "unknown" {

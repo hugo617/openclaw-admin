@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +34,9 @@ export default function RootLayout({
         <Sidebar />
         <div className="ml-60 flex min-h-screen flex-col">
           <Header />
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 p-6">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </main>
         </div>
       </body>
     </html>

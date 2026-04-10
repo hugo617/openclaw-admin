@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatDate } from "@/lib/format";
 
 interface CronTask {
   name: string;
@@ -11,10 +11,6 @@ interface CronTask {
   config: Record<string, unknown>;
   modifiedAt: string;
   size: number;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
 }
 
 export default function CronPage() {

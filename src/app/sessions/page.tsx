@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatSize, formatDate } from "@/lib/format";
 
 interface SessionMeta {
   id: string;
@@ -25,18 +26,6 @@ interface SessionMeta {
   preview?: string;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
-
 function statusVariant(status: string): "default" | "secondary" | "destructive" {
   if (status === "active") return "default";
   if (status === "reset") return "secondary";
@@ -45,7 +34,6 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
-  const [filtered, setFiltered] = useState<SessionMeta[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -55,25 +43,19 @@ export default function SessionsPage() {
       .then((res) => {
         if (res.success) {
           setSessions(res.data);
-          setFiltered(res.data);
         }
       })
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!search) {
-      setFiltered(sessions);
-      return;
-    }
+  const filtered = useMemo(() => {
+    if (!search) return sessions;
     const q = search.toLowerCase();
-    setFiltered(
-      sessions.filter(
-        (s) =>
-          s.id.toLowerCase().includes(q) ||
-          s.preview?.toLowerCase().includes(q) ||
-          s.channel?.toLowerCase().includes(q)
-      )
+    return sessions.filter(
+      (s) =>
+        s.id.toLowerCase().includes(q) ||
+        s.preview?.toLowerCase().includes(q) ||
+        s.channel?.toLowerCase().includes(q)
     );
   }, [search, sessions]);
 

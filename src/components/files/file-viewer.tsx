@@ -1,21 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { formatSize } from "@/lib/format";
 
 interface FileViewerProps {
   filePath: string | null;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
 function getLanguage(filename: string): string {
@@ -43,64 +36,81 @@ function isBinary(filename: string): boolean {
 }
 
 function JsonHighlight({ content }: { content: string }) {
-  try {
-    const formatted = JSON.stringify(JSON.parse(content), null, 2);
-    // Simple JSON syntax highlighting
-    const highlighted = formatted.replace(
-      /("(?:[^"\\]|\\.)*")\s*:/g,
-      '<span style="color: hsl(221, 83%, 53%)">$1</span>:'
-    ).replace(
-      /:\s*("(?:[^"\\]|\\.)*")/g,
-      ': <span style="color: hsl(142, 71%, 45%)">$1</span>'
-    ).replace(
-      /:\s*(\d+\.?\d*)/g,
-      ': <span style="color: hsl(38, 92%, 50%)">$1</span>'
-    ).replace(
-      /:\s*(true|false)/g,
-      ': <span style="color: hsl(0, 84%, 60%)">$1</span>'
-    ).replace(
-      /:\s*(null)/g,
-      ': <span style="color: hsl(0, 0%, 50%)">$1</span>'
-    );
-    return (
-      <pre
-        className="text-sm font-mono whitespace-pre-wrap"
-        dangerouslySetInnerHTML={{ __html: highlighted }}
-      />
-    );
-  } catch {
+  const highlighted = useMemo(() => {
+    try {
+      const formatted = JSON.stringify(JSON.parse(content), null, 2);
+      return formatted
+        .replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span style="color: hsl(221, 83%, 53%)">$1</span>:')
+        .replace(/:\s*("(?:[^"\\]|\\.)*")/g, ': <span style="color: hsl(142, 71%, 45%)">$1</span>')
+        .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color: hsl(38, 92%, 50%)">$1</span>')
+        .replace(/:\s*(true|false)/g, ': <span style="color: hsl(0, 84%, 60%)">$1</span>')
+        .replace(/:\s*(null)/g, ': <span style="color: hsl(0, 0%, 50%)">$1</span>');
+    } catch {
+      return null;
+    }
+  }, [content]);
+
+  if (highlighted === null) {
     return <pre className="text-sm font-mono whitespace-pre-wrap">{content}</pre>;
   }
+  return (
+    <pre
+      className="text-sm font-mono whitespace-pre-wrap"
+      dangerouslySetInnerHTML={{ __html: highlighted }}
+    />
+  );
 }
 
+type FetchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "loaded"; content: string; size: number; modifiedAt: string }
+  | { status: "error"; error: string };
+
 export function FileViewer({ filePath }: FileViewerProps) {
-  const [content, setContent] = useState<string | null>(null);
-  const [fileInfo, setFileInfo] = useState<{ size: number; modifiedAt: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState<string>("");
 
   useEffect(() => {
     if (!filePath) return;
-    setLoading(true);
-    setError(null);
-    setEditing(false);
 
+    let cancelled = false;
     const apiPath = filePath.split("/").map(encodeURIComponent).join("/");
-    fetch(`/api/files/${apiPath}`)
+    const controller = new AbortController();
+
+    fetch(`/api/files/${apiPath}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((res) => {
+        if (cancelled) return;
         if (res.success) {
-          setContent(res.data.content);
-          setFileInfo({ size: res.data.size, modifiedAt: res.data.modifiedAt });
+          setFetchState({
+            status: "loaded",
+            content: res.data.content,
+            size: res.data.size,
+            modifiedAt: res.data.modifiedAt,
+          });
         } else {
-          setError(res.error);
+          setFetchState({ status: "error", error: res.error });
         }
       })
-      .catch(() => setError("Failed to fetch file"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (cancelled || err.name === "AbortError") return;
+        setFetchState({ status: "error", error: "Failed to fetch file" });
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [filePath]);
+
+  const loading = fetchState.status === "loading";
+  const error = fetchState.status === "error" ? fetchState.error : null;
+  const content = fetchState.status === "loaded" ? fetchState.content : null;
+  const fileInfo = fetchState.status === "loaded"
+    ? { size: fetchState.size, modifiedAt: fetchState.modifiedAt }
+    : null;
 
   if (!filePath) {
     return (
@@ -116,7 +126,7 @@ export function FileViewer({ filePath }: FileViewerProps) {
   const canEdit = !binary && (lang === "json" || lang === "markdown" || lang === "text" || lang === "yaml");
 
   async function handleSave() {
-    if (!filePath) return;
+    if (!filePath || fetchState.status !== "loaded") return;
     const apiPath = filePath.split("/").map(encodeURIComponent).join("/");
     try {
       const res = await fetch(`/api/files/${apiPath}`, {
@@ -124,15 +134,15 @@ export function FileViewer({ filePath }: FileViewerProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editContent }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setContent(editContent);
+      const result = await res.json();
+      if (result.success) {
+        setFetchState({ ...fetchState, content: editContent });
         setEditing(false);
       } else {
-        setError(data.error);
+        setFetchState({ status: "error", error: result.error });
       }
     } catch {
-      setError("Failed to save file");
+      setFetchState({ status: "error", error: "Failed to save file" });
     }
   }
 

@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const pageNames: Record<string, string> = {
   "/": "Dashboard",
@@ -40,9 +41,12 @@ export function Header() {
       style={{ marginLeft: sidebarWidth }}
     >
       <h1 className="text-lg font-semibold">{pageName}</h1>
-      <span className="ml-auto text-xs text-muted-foreground font-mono">
-        {process.env.NEXT_PUBLIC_OPENCLAW_HOME || "~/.openclaw"}
-      </span>
+      <div className="ml-auto flex items-center gap-3">
+        <ThemeToggle />
+        <span className="text-xs text-muted-foreground font-mono">
+          {process.env.NEXT_PUBLIC_OPENCLAW_HOME || "~/.openclaw"}
+        </span>
+      </div>
     </header>
   );
 }

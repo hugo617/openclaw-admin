@@ -181,6 +181,46 @@ export function FileViewer({ filePath }: FileViewerProps) {
     );
   }
 
+  // Large file warning
+  const LARGE_FILE_THRESHOLD = 1024 * 1024; // 1MB
+  if (fileInfo && fileInfo.size > LARGE_FILE_THRESHOLD && !editing) {
+    return (
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            {filename}
+            <Badge variant="destructive">Large File</Badge>
+            <span className="text-xs text-muted-foreground font-normal">
+              {formatSize(fileInfo.size)}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This file is {formatSize(fileInfo.size)} and may be slow to display.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setEditing(true)}
+              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md"
+            >
+              Load anyway
+            </button>
+            <button
+              onClick={() => {
+                const apiPath = filePath.split("/").map(encodeURIComponent).join("/");
+                window.open(`/api/files/${apiPath}`, "_blank");
+              }}
+              className="px-3 py-1.5 text-sm border rounded-md"
+            >
+              Download raw
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-2">

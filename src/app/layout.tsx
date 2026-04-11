@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
+import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Header } from "@/components/layout/header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -35,14 +35,13 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          <GlobalSearch />
-          <Sidebar />
-          <div className="flex min-h-screen flex-col">
+          <DashboardShell>
+            <GlobalSearch />
             <Header />
             <main className="flex-1 p-6">
               <ErrorBoundary>{children}</ErrorBoundary>
             </main>
-          </div>
+          </DashboardShell>
         </ThemeProvider>
       </body>
     </html>
